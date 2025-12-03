@@ -2,7 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar as CalendarIcon, Cake, AlertTriangle } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import * as React from "react";
 
@@ -33,13 +33,14 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import BookingCalendar from "@/components/BookingCalendar";
+import NewBookingCalendar from "@/components/NewBookingCalendar";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { createBooking, getBookings, getRestaurants, getTables } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const formSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
+  firstName: z.string().min(1, "First name is required"),
+  surname: z.string().min(1, "Surname is required"),
   phone: z.string().min(10, "Phone number must be at least 10 characters"),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
   guests: z.coerce.number().min(1, "Must have at least 1 guest"),
@@ -113,7 +114,8 @@ const NewBooking = () => {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
+      firstName: "",
+      surname: "",
       phone: "",
       email: "",
       guests: 2,
@@ -132,26 +134,11 @@ const NewBooking = () => {
   const dietaryRestrictionType = form.watch("dietaryRestrictionType");
   const watchedDate = form.watch("date");
   const watchedTime = form.watch("time");
+  const watchedGuests = form.watch("guests");
   const watchedDuration = form.watch("duration");
-
-  // Combine date and time for calendar
-  const calendarDateTime = React.useMemo(() => {
-    try {
-      if (!watchedTime || !watchedDate) {
-        return new Date();
-      }
-      const [hours, minutes] = watchedTime.split(":").map(Number);
-      if (isNaN(hours) || isNaN(minutes)) {
-        return new Date();
-      }
-      const combined = new Date(watchedDate);
-      combined.setHours(hours, minutes, 0, 0);
-      return combined;
-    } catch (error) {
-      console.error("Error calculating calendar date time:", error);
-      return new Date();
-    }
-  }, [watchedDate, watchedTime]);
+  const watchedTable = form.watch("table");
+  const watchedFirstName = form.watch("firstName");
+  const watchedSurname = form.watch("surname");
 
   // Get available time slots based on restaurant hours
   const availableTimeSlots = React.useMemo(() => {
@@ -355,7 +342,7 @@ const NewBooking = () => {
 
     createMutation.mutate({
       restaurant_id: String(restaurant.id),
-      name: values.name,
+      name: `${values.firstName} ${values.surname}`.trim(),
       phone: values.phone,
       email: values.email || undefined,
       guests: values.guests,
@@ -390,6 +377,22 @@ const NewBooking = () => {
     form.setValue("table", String(table));
   };
 
+  const handleDateChange = (date: Date) => {
+    form.setValue("date", date);
+  };
+
+  const handleTimeChange = (time: string) => {
+    form.setValue("time", time);
+  };
+
+  const handleGuestsChange = (guests: number) => {
+    form.setValue("guests", guests);
+  };
+
+  const handleDurationChange = (duration: number) => {
+    form.setValue("duration", duration);
+  };
+
   // Show loading state while data is being fetched
   const isLoading = !restaurant && restaurants.length === 0;
   const hasError = restaurants.length === 0 && !isLoading;
@@ -418,38 +421,56 @@ const NewBooking = () => {
   return (
     <ErrorBoundary>
       <div className="p-6 pt-2 h-[calc(100vh-100px)] overflow-hidden flex flex-col">
-      <div className="grid gap-6 lg:grid-cols-[45%_1fr] flex-1 min-h-0">
-        {/* Left Column: Booking Form */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_35%] flex-1 min-h-0">
+        {/* Left Column: Booking Calendar */}
+        <NewBookingCalendar
+          date={watchedDate || new Date()}
+          time={watchedTime || "19:00"}
+          guests={watchedGuests || 2}
+          duration={watchedDuration || 90}
+          initialTable={initialTable}
+          table={watchedTable ? String(watchedTable) : undefined}
+          firstName={watchedFirstName}
+          surname={watchedSurname}
+          onDateChange={handleDateChange}
+          onTimeChange={handleTimeChange}
+          onGuestsChange={handleGuestsChange}
+          onDurationChange={handleDurationChange}
+          onSlotClick={handleSlotClick}
+        />
+
+        {/* Right Column: Booking Form */}
         <div className="flex flex-col h-full overflow-y-auto">
+          <div className="h-[52px] mb-4" /> {/* Spacer to align with calendar controls (matches navigation controls height) */}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <Card>
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Name */}
+                    {/* First Name */}
                     <FormField
                       control={form.control}
-                      name="name"
+                      name="firstName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Guest Name</FormLabel>
+                          <FormLabel>First Name</FormLabel>
                           <FormControl>
-                            <Input placeholder="John Doe" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
+                            <Input placeholder="John" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
 
-                    {/* Number of Guests */}
+                    {/* Surname */}
                     <FormField
                       control={form.control}
-                      name="guests"
+                      name="surname"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Number of Guests</FormLabel>
+                          <FormLabel>Surname</FormLabel>
                           <FormControl>
-                            <Input type="number" min={1} className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
+                            <Input placeholder="Doe" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -486,155 +507,16 @@ const NewBooking = () => {
                       )}
                     />
 
-                    {/* Time */}
-                    <FormField
-                      control={form.control}
-                      name="time"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Time</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow">
-                                <SelectValue placeholder="Select a time" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {availableTimeSlots && availableTimeSlots.length > 0 ? (
-                                availableTimeSlots.map((timeString) => (
-                                  <SelectItem key={timeString} value={timeString}>
-                                    {timeString}
-                                  </SelectItem>
-                                ))
-                              ) : (
-                                <SelectItem value="__disabled__" disabled>
-                                  {restaurant ? "Restaurant closed on this day" : "Loading times..."}
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Date */}
-                    <FormField
-                      control={form.control}
-                      name="date"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Date</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "w-full pl-3 text-left font-normal border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow hover:bg-white",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                >
-                                  {field.value ? (
-                                    format(field.value, "PPP")
-                                  ) : (
-                                    <span>Pick a date</span>
-                                  )}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                disabled={(date) =>
-                                  date < new Date(new Date().setHours(0, 0, 0, 0))
-                                }
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Duration */}
-                    <FormField
-                      control={form.control}
-                      name="duration"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Duration (minutes)</FormLabel>
-                          <Select onValueChange={(val) => field.onChange(Number(val))} defaultValue={String(field.value)}>
-                            <FormControl>
-                              <SelectTrigger className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow">
-                                <SelectValue placeholder="Select duration" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="60">60 min</SelectItem>
-                              <SelectItem value="90">90 min</SelectItem>
-                              <SelectItem value="120">120 min</SelectItem>
-                              <SelectItem value="150">150 min</SelectItem>
-                              <SelectItem value="180">180 min</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Table */}
-                    <FormField
-                      control={form.control}
-                      name="table"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Table Number</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value ?? undefined}>
-                            <FormControl>
-                              <SelectTrigger className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow">
-                                <SelectValue placeholder="Select a table" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {tables && tables.length > 0 ? (
-                                tables
-                                  .sort((a, b) => a.table_number.localeCompare(b.table_number, undefined, { numeric: true }))
-                                  .map((table) => {
-                                    const isAvailable = availableTables && availableTables.includes(table.table_number);
-                                    return (
-                                      <SelectItem
-                                        key={table.id}
-                                        value={String(table.table_number)}
-                                        disabled={!isAvailable}
-                                      >
-                                        Table {table.table_number} {table.section && `(${table.section})`} {!isAvailable && "(Unavailable)"}
-                                      </SelectItem>
-                                    );
-                                  })
-                              ) : (
-                                <SelectItem value="__disabled__" disabled>
-                                  {restaurant ? "No tables available" : "Loading tables..."}
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
                     {/* Special Requests Dropdown */}
                     <FormField
                       control={form.control}
                       name="specialRequestType"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Special Requests</FormLabel>
+                        <FormItem className="col-span-1 md:col-span-2">
+                          <FormLabel className="flex items-center gap-2">
+                            <Cake className="h-4 w-4 text-blue-500" />
+                            Special Requests
+                          </FormLabel>
                           <Select onValueChange={handleSpecialRequestTypeChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow">
@@ -648,35 +530,6 @@ const NewBooking = () => {
                               <SelectItem value="Quiet Table">Quiet Table</SelectItem>
                               <SelectItem value="Window Seat">Window Seat</SelectItem>
                               <SelectItem value="High Chair">High Chair</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Dietary Restrictions Dropdown */}
-                    <FormField
-                      control={form.control}
-                      name="dietaryRestrictionType"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Dietary Restrictions</FormLabel>
-                          <Select onValueChange={handleDietaryRestrictionTypeChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow">
-                                <SelectValue placeholder="Select restriction" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="None">None</SelectItem>
-                              <SelectItem value="Gluten-free">Gluten-free</SelectItem>
-                              <SelectItem value="Vegetarian">Vegetarian</SelectItem>
-                              <SelectItem value="Vegan">Vegan</SelectItem>
-                              <SelectItem value="Dairy-free">Dairy-free</SelectItem>
-                              <SelectItem value="Nut Allergy">Nut Allergy</SelectItem>
-                              <SelectItem value="Shellfish Allergy">Shellfish Allergy</SelectItem>
                               <SelectItem value="Other">Other</SelectItem>
                             </SelectContent>
                           </Select>
@@ -705,6 +558,38 @@ const NewBooking = () => {
                         )}
                       />
                     )}
+
+                    {/* Dietary Restrictions Dropdown */}
+                    <FormField
+                      control={form.control}
+                      name="dietaryRestrictionType"
+                      render={({ field }) => (
+                        <FormItem className="col-span-1 md:col-span-2">
+                          <FormLabel className="flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                            Dietary Restrictions
+                          </FormLabel>
+                          <Select onValueChange={handleDietaryRestrictionTypeChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow">
+                                <SelectValue placeholder="Select restriction" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="None">None</SelectItem>
+                              <SelectItem value="Gluten-free">Gluten-free</SelectItem>
+                              <SelectItem value="Vegetarian">Vegetarian</SelectItem>
+                              <SelectItem value="Vegan">Vegan</SelectItem>
+                              <SelectItem value="Dairy-free">Dairy-free</SelectItem>
+                              <SelectItem value="Nut Allergy">Nut Allergy</SelectItem>
+                              <SelectItem value="Shellfish Allergy">Shellfish Allergy</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
                     {/* Conditional Dietary Restrictions Textarea */}
                     {dietaryRestrictionType !== "None" && (
@@ -737,20 +622,6 @@ const NewBooking = () => {
               </div>
             </form>
           </Form>
-        </div>
-
-        {/* Right Column: Booking Calendar */}
-        <div className="flex flex-col min-h-0">
-          <Card className="flex-1 cursor-pointer overflow-hidden flex flex-col">
-            <CardContent className="p-0 flex-1 flex flex-col overflow-hidden">
-              <BookingCalendar
-                compact
-                className="h-full"
-                initialTime={calendarDateTime}
-                onSlotClick={handleSlotClick}
-              />
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>

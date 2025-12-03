@@ -1,2 +1,2 @@
-# Tabley_Live_Demo
-Live Demo for the Tabley App
+# Tabley Live Demo
+Static Demo Page for how the Restaraunt Booking System works

@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Calendar, Users, Phone, Clock, UserPlus, Search, UtensilsCrossed, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Users, Phone, Clock, UserPlus, Search, Trash2, Cake, AlertTriangle } from "lucide-react";
+import { PiPicnicTableBold } from "react-icons/pi";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow, isWithinInterval, startOfDay, endOfDay, parseISO } from "date-fns";
@@ -184,11 +185,13 @@ const Activity = () => {
     guestRange: number[];
     tables: number[];
     timeRange: string[];
+    specialBookings: "all" | "specialRequests" | "dietaryRestrictions";
   }>({
     dateRange: undefined,
     guestRange: [1, 20],
     tables: DEFAULT_TABLE_FILTER,
     timeRange: ["00:00", "23:59"],
+    specialBookings: "all",
   });
 
   // Transform bookings into activities format
@@ -204,6 +207,8 @@ const Activity = () => {
     bookedAt: booking.bookedAt ? new Date(booking.bookedAt) : new Date(),
     icon: UserPlus,
     timesBooked: 1, // This would need to come from backend if tracking repeat customers
+    dietaryRestrictions: booking.dietaryRestrictions,
+    specialRequests: booking.specialRequests,
   }));
 
   const filteredActivities = activities.filter(activity => {
@@ -253,6 +258,18 @@ const Activity = () => {
         return false;
       }
     }
+
+    // Special bookings filter
+    if (filters.specialBookings === "specialRequests") {
+      if (!activity.specialRequests) {
+        return false;
+      }
+    } else if (filters.specialBookings === "dietaryRestrictions") {
+      if (!activity.dietaryRestrictions) {
+        return false;
+      }
+    }
+    // If "all", no filtering needed
 
     return true;
   });
@@ -308,6 +325,7 @@ const Activity = () => {
               guestRange: [1, 20],
               tables: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
               timeRange: ["00:00", "23:59"],
+              specialBookings: "all",
             })}
           />
           <Select value={sortOrder} onValueChange={value => setSortOrder(value as any)}>
@@ -343,12 +361,18 @@ const Activity = () => {
                     <h3 className="text-base font-semibold text-foreground">
                       {activity.guestName}
                     </h3>
-                    <div className="flex items-center gap-1.5 text-sm text-foreground ml-4">
-                      <UtensilsCrossed className="h-4 w-4" />
+                    <div className="flex items-center gap-1.5 text-base text-foreground ml-4">
+                      {activity.dietaryRestrictions && (
+                        <AlertTriangle className="h-5 w-5 text-red-500" />
+                      )}
+                      {activity.specialRequests && (
+                        <Cake className="h-5 w-5 text-blue-500" />
+                      )}
+                      <PiPicnicTableBold className={`h-5 w-5 ${(activity.dietaryRestrictions || activity.specialRequests) ? 'ml-2.5' : ''}`} />
                       <span className="font-semibold">{activity.table}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-sm text-foreground">
-                      <Users className="h-4 w-4" />
+                    <div className="flex items-center gap-1.5 text-base text-foreground">
+                      <Users className="h-5 w-5" />
                       <span className="font-semibold">{activity.guests}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground ml-4">
@@ -376,15 +400,6 @@ const Activity = () => {
                       {formatDistanceToNow(activity.bookedAt, { addSuffix: true })}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
-                        onClick={() => openGuestEdit(activity.id)}
-                        disabled={updateMutation.isPending}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button

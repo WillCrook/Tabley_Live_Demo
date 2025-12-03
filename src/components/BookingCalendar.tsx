@@ -1,5 +1,5 @@
 import { CardContent } from "@/components/ui/card";
-import { Users, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Clock, X, Pencil, Check } from "lucide-react";
+import { Users, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Clock, X, Pencil, Check, Trash2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,17 +9,25 @@ import { useState, useEffect, useMemo } from "react";
 import { format, addDays, subDays, startOfDay, addHours, subHours, differenceInMinutes, setHours, setMinutes, startOfHour } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getBookings, updateBooking as updateBookingAPI, getTables, getRestaurants } from "@/lib/api";
+import { getBookings, updateBooking as updateBookingAPI, deleteBooking as deleteBookingAPI, getTables, getRestaurants } from "@/lib/api";
 import type { Booking } from "@/types/booking";
 
 interface BookingCalendarProps {
     compact?: boolean;
+    dashboard?: boolean;
     className?: string;
     initialTime?: Date;
+    guests?: number;
+    previewBookingTime?: string;
+    previewBookingTable?: string;
+    previewBookingGuests?: number;
+    previewBookingDuration?: number;
+    previewBookingFirstName?: string;
+    previewBookingSurname?: string;
     onSlotClick?: (date: string, time: string, table: string) => void;
 }
 
-const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick }: BookingCalendarProps) => {
+const BookingCalendar = ({ compact = false, dashboard = false, className, initialTime, guests, previewBookingTime, previewBookingTable, previewBookingGuests, previewBookingDuration, previewBookingFirstName, previewBookingSurname, onSlotClick }: BookingCalendarProps) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
@@ -66,10 +74,37 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
 
     const normalizeTable = (value: unknown) => (value !== undefined && value !== null ? String(value) : "");
 
+    // Check if a table can accommodate the number of guests
+    const canTableAccommodateGuests = useMemo(() => {
+        const capacityMap = new Map<string, boolean>();
+        
+        if (!guests || guests <= 0) {
+            // If no guests specified, all tables are available
+            return capacityMap;
+        }
+
+        tablesData.forEach((table) => {
+            const tableNumber = String(table.table_number);
+            // Only check max_capacity - if table can seat at least the number of guests, it's available
+            const canAccommodate = table.max_capacity >= guests;
+            capacityMap.set(tableNumber, canAccommodate);
+        });
+
+        return capacityMap;
+    }, [tablesData, guests]);
+
     // Mutation for updating bookings
     const updateMutation = useMutation({
         mutationFn: ({ id, updates }: { id: number; updates: Partial<Booking> }) =>
             updateBookingAPI(id, updates),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['bookings'] });
+        },
+    });
+
+    // Mutation for deleting bookings
+    const deleteMutation = useMutation({
+        mutationFn: (id: number) => deleteBookingAPI(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['bookings'] });
         },
@@ -84,13 +119,14 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
     const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
     const [clickOffsetPercent, setClickOffsetPercent] = useState<number>(0);
     const [selectedBookingWidth, setSelectedBookingWidth] = useState<number>(0);
-    const [previewPosition, setPreviewPosition] = useState<{ table: string; time: string; leftPercent: number } | null>(null);
+    const [previewPosition, setPreviewPosition] = useState<{ table: string; time: string; leftPercent: number; isOverlapping?: boolean } | null>(null);
 
     // Resize state
     const [resizeMode, setResizeMode] = useState<"left" | "right" | null>(null);
     const [resizeBooking, setResizeBooking] = useState<Booking | null>(null);
     const [previewDuration, setPreviewDuration] = useState<number>(0);
     const [previewTime, setPreviewTime] = useState<string>("");
+    const [hoveredSlot, setHoveredSlot] = useState<{ table: string; time: string; position: number } | null>(null);
 
     // Duration limits (in minutes)
     const MIN_DURATION = 60;  // 1 hour
@@ -128,8 +164,8 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
         setIsLive(!isLive);
     };
 
-    const WINDOW_HOURS_PREV = 1;
-    const WINDOW_HOURS_NEXT = 6;
+    const WINDOW_HOURS_PREV = 2;
+    const WINDOW_HOURS_NEXT = 4;
     const TOTAL_WINDOW_MINUTES = (WINDOW_HOURS_PREV + WINDOW_HOURS_NEXT) * 60;
     const CURRENT_TIME_POS = (WINDOW_HOURS_PREV / (WINDOW_HOURS_PREV + WINDOW_HOURS_NEXT)) * 100;
     const TABLE_LABEL_WIDTH = compact ? 60 : 80;
@@ -240,6 +276,19 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
     };
 
     const getStatusColor = (status: string) => {
+        // In dashboard mode, use emerald-500 styling like regular mode
+        // In compact mode (new booking page), use lighter styling without hover
+        if (compact && !dashboard) {
+            switch (status) {
+                case "confirmed":
+                    return "bg-emerald-50 text-emerald-600";
+                case "new_booking":
+                    return "bg-emerald-50 text-emerald-600";
+                default:
+                    return "bg-muted text-foreground";
+            }
+        }
+        // Regular mode (bookings page) or dashboard mode, use original styling
         switch (status) {
             case "confirmed":
                 return "bg-emerald-500 hover:bg-emerald-600 text-white";
@@ -248,6 +297,40 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
             default:
                 return "bg-muted text-foreground";
         }
+    };
+
+    // Check if a new booking would overlap with existing bookings
+    const wouldOverlap = (table: string, date: string, startTime: string, duration: number, excludeBookingId?: number): boolean => {
+        const [startHours, startMins] = startTime.split(":").map(Number);
+        const startTimeMinutes = startHours * 60 + startMins;
+        const endTimeMinutes = startTimeMinutes + duration;
+
+        return bookings.some((booking) => {
+            // Exclude the booking being moved/resized
+            if (excludeBookingId && booking.id === excludeBookingId) {
+                return false;
+            }
+
+            // Only check bookings on the same table and date
+            if (normalizeTable(booking.table) !== table || booking.date !== date) {
+                return false;
+            }
+
+            const effective = getEffectiveBooking(booking);
+            const [bookingStartHours, bookingStartMins] = effective.time.split(":").map(Number);
+            const bookingStartTimeMinutes = bookingStartHours * 60 + bookingStartMins;
+            const bookingEndTimeMinutes = bookingStartTimeMinutes + effective.duration;
+
+            // Check for overlap: new booking overlaps if:
+            // 1. New start is within existing booking (start < newStart < end)
+            // 2. New end is within existing booking (start < newEnd < end)
+            // 3. New booking completely contains existing booking (newStart <= existingStart && newEnd >= existingEnd)
+            return (
+                (startTimeMinutes >= bookingStartTimeMinutes && startTimeMinutes < bookingEndTimeMinutes) ||
+                (endTimeMinutes > bookingStartTimeMinutes && endTimeMinutes <= bookingEndTimeMinutes) ||
+                (startTimeMinutes <= bookingStartTimeMinutes && endTimeMinutes >= bookingEndTimeMinutes)
+            );
+        });
     };
 
     // Quick Edit handlers
@@ -288,19 +371,32 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
         setIsQuickEdit(false);
     };
 
+    const handleDeleteBooking = (e: React.MouseEvent, booking: Booking) => {
+        if (!isQuickEdit) return;
+        e.stopPropagation();
+        if (confirm(`Are you sure you want to delete the booking for ${booking.name}?`)) {
+            deleteMutation.mutate(booking.id);
+        }
+    };
+
     // Get effective booking data (with pending changes applied for display)
     const getEffectiveBooking = (booking: Booking) => {
+        // Prioritize live resize preview when actively resizing
+        if (resizeBooking?.id === booking.id && previewDuration > 0) {
+            // Get base booking (may include pending changes from previous operations)
+            const baseBooking = pendingChanges.get(booking.id) 
+                ? { ...booking, ...pendingChanges.get(booking.id)! }
+                : booking;
+            return {
+                ...baseBooking,
+                duration: previewDuration,
+                time: previewTime || baseBooking.time
+            };
+        }
+        // Show pending changes when not actively resizing
         const pending = pendingChanges.get(booking.id);
         if (pending) {
             return { ...booking, ...pending };
-        }
-        // Show preview during resize
-        if (resizeBooking?.id === booking.id && previewDuration > 0) {
-            return {
-                ...booking,
-                duration: previewDuration,
-                time: previewTime || booking.time
-            };
         }
         return booking;
     };
@@ -411,10 +507,17 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
             setSelectedBooking(booking);
             setClickOffsetPercent(offsetPercent);
             setSelectedBookingWidth(bookingRect.width);
+            
+            // Check if initial position would overlap (shouldn't, but check for consistency)
+            const bookingDate = format(selectedDate, "yyyy-MM-dd");
+            const duration = effective.duration;
+            const isOverlapping = wouldOverlap(normalizeTable(effective.table), bookingDate, effective.time, duration, booking.id);
+            
             setPreviewPosition({
                 table: normalizeTable(effective.table),
                 time: effective.time,
-                leftPercent: currentLeftPercent
+                leftPercent: currentLeftPercent,
+                isOverlapping
             });
         }
     };
@@ -430,18 +533,21 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
 
         // Handle resize mode
         if (resizeBooking && resizeMode) {
-            const effective = getEffectiveBooking(resizeBooking);
-            const existingChanges = pendingChanges.get(resizeBooking.id);
+            // Get the effective booking which includes pending changes but not the live preview
+            // We need the base state (with pending changes) to calculate from
+            const baseBooking = pendingChanges.get(resizeBooking.id)
+                ? { ...resizeBooking, ...pendingChanges.get(resizeBooking.id)! }
+                : resizeBooking;
 
             // Get current booking start time in minutes since midnight
-            // Use previewTime if available (live resize state), otherwise use existing/pending time
-            const currentTime = previewTime || existingChanges?.time || resizeBooking.time;
+            // Use previewTime if available (live resize state), otherwise use base booking time
+            const currentTime = previewTime || baseBooking.time;
             const [startHours, startMins] = currentTime.split(":").map(Number);
             const startTimeMinutes = startHours * 60 + startMins;
 
             // Get current duration
-            // Use previewDuration if available (live resize state), otherwise use existing/pending duration
-            const currentDuration = previewDuration > 0 ? previewDuration : (existingChanges?.duration || resizeBooking.duration);
+            // Use previewDuration if available (live resize state), otherwise use base booking duration
+            const currentDuration = previewDuration > 0 ? previewDuration : baseBooking.duration;
             const endTimeMinutes = startTimeMinutes + currentDuration;
 
             // Calculate mouse position in time
@@ -511,10 +617,17 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
         const diff = differenceInMinutes(snappedDateTime, viewStart);
         const snappedLeftPercent = (diff / TOTAL_WINDOW_MINUTES) * 100;
 
+        // Check if the move would overlap with other bookings
+        const existingChanges = pendingChanges.get(selectedBooking.id);
+        const duration = existingChanges?.duration || selectedBooking.duration;
+        const bookingDate = format(selectedDate, "yyyy-MM-dd");
+        const isOverlapping = wouldOverlap(targetTable, bookingDate, newTime, duration, selectedBooking.id);
+
         setPreviewPosition({
             table: targetTable,
             time: newTime,
-            leftPercent: snappedLeftPercent
+            leftPercent: snappedLeftPercent,
+            isOverlapping
         });
     };
 
@@ -540,6 +653,11 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
 
         // Handle move mode
         if (!selectedBooking || !previewPosition) return;
+
+        // Prevent move if it would overlap with another booking
+        if (previewPosition.isOverlapping) {
+            return;
+        }
 
         // Use the snapped preview position for the final placement
         // Preserve existing duration if any, otherwise use original
@@ -737,27 +855,38 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
                             ))}
 
                             {/* Current Time Indicator (Header) */}
-                            <div
-                                className="absolute top-0 bottom-0 border-l-2 border-primary z-20"
-                                style={{ left: `${CURRENT_TIME_POS}%` }}
-                            >
-                                <div className="absolute -top-1 -left-[5px] w-2.5 h-2.5 rounded-full bg-primary" />
-                            </div>
+                            {(!compact || dashboard) && (
+                                <div
+                                    className="absolute top-0 bottom-0 border-l-2 border-primary z-20"
+                                    style={{ left: `${CURRENT_TIME_POS}%` }}
+                                >
+                                    <div className="absolute -top-1 -left-[5px] w-2.5 h-2.5 rounded-full bg-primary" />
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     {/* Body */}
                     <ScrollArea className="h-full">
                         <div className="relative min-w-full">
-                            {tableNumbers.map(({ id, tableNumber }) => (
+                            {tableNumbers.map(({ id, tableNumber }) => {
+                                // If guests is not specified or table is not in capacity map, allow it
+                                const canAccommodate = !guests || guests <= 0 || (canTableAccommodateGuests.get(tableNumber) ?? true);
+                                
+                                return (
                                 <div
                                     key={id}
-                                    className={`flex h-[66px] relative transition-colors ${isQuickEdit && selectedBooking ? 'hover:bg-muted/30 cursor-pointer' : ''}`}
-                                    onMouseMove={(e) => handleMouseMove(e, tableNumber, e.currentTarget as HTMLDivElement)}
-                                    onClick={(e) => handleRowClick(e, tableNumber, e.currentTarget as HTMLDivElement)}
+                                    className={`flex h-[66px] relative transition-colors ${!canAccommodate ? 'bg-muted/30 opacity-50 pointer-events-none' : isQuickEdit && selectedBooking ? 'hover:bg-muted/30 cursor-pointer' : ''}`}
+                                    onMouseMove={canAccommodate ? (e) => handleMouseMove(e, tableNumber, e.currentTarget as HTMLDivElement) : undefined}
+                                    onClick={canAccommodate ? (e) => handleRowClick(e, tableNumber, e.currentTarget as HTMLDivElement) : undefined}
+                                    onMouseLeave={() => {
+                                        if (!isQuickEdit && canAccommodate && (!compact || dashboard)) {
+                                            setHoveredSlot(null);
+                                        }
+                                    }}
                                 >
                                     <div
-                                        className="flex-shrink-0 border-r border-border flex items-center justify-center font-medium text-sm text-muted-foreground bg-muted/5"
+                                        className={`flex-shrink-0 border-r border-border flex items-center justify-center font-medium text-sm ${canAccommodate ? 'text-muted-foreground bg-muted/5' : 'text-muted-foreground/50 bg-muted/10'}`}
                                         style={{ width: `${TABLE_LABEL_WIDTH}px` }}
                                     >
                                         {tableNumber}
@@ -785,24 +914,47 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
                                             />
                                         ))}
 
-                                        {/* Interactive Slots - disabled when Quick Edit is on */}
+                                        {/* Interactive Slots - disabled when Quick Edit is on or table can't accommodate */}
                                         {!isQuickEdit && slots.map((slot, index) => {
                                             const width = getWidth(30);
                                             // Only render if partially visible
                                             if (slot.position + width < 0 || slot.position > 100) return null;
 
+                                            const slotDate = format(slot.time, "yyyy-MM-dd");
+                                            const slotTime = format(slot.time, "HH:mm");
+                                            // Use preview booking duration if available (for new booking page), otherwise default to 90
+                                            const PREVIEW_DURATION = previewBookingDuration || 90;
+                                            const wouldOverlapBooking = wouldOverlap(tableNumber, slotDate, slotTime, PREVIEW_DURATION);
+                                            const isDisabled = !canAccommodate || wouldOverlapBooking;
+
                                             return (
                                                 <div
                                                     key={`slot-${tableNumber}-${index}`}
-                                                    className="absolute top-2 bottom-2 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-muted/50 cursor-pointer transition-all z-0"
+                                                    className={`absolute top-2 bottom-2 flex items-center justify-center transition-all z-0 ${isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                                                     style={{
                                                         left: `${slot.position}%`,
                                                         width: `${width}%`
                                                     }}
+                                                    onMouseEnter={() => {
+                                                        if (!isDisabled && (!compact || dashboard)) {
+                                                            setHoveredSlot({
+                                                                table: tableNumber,
+                                                                time: slotTime,
+                                                                position: slot.position
+                                                            });
+                                                        }
+                                                    }}
+                                                    onMouseLeave={() => {
+                                                        if (!compact || dashboard) {
+                                                            setHoveredSlot(null);
+                                                        }
+                                                    }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        const slotDate = format(slot.time, "yyyy-MM-dd");
-                                                        const slotTime = format(slot.time, "HH:mm");
+                                                        // Prevent click if disabled or would overlap with existing booking
+                                                        if (isDisabled) {
+                                                            return;
+                                                        }
                                                         if (onSlotClick) {
                                                             onSlotClick(slotDate, slotTime, tableNumber);
                                                         } else {
@@ -816,15 +968,16 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
                                                         }
                                                     }}
                                                 />
-
                                             );
                                         })}
 
                                         {/* Current Time Indicator (Body) */}
-                                        <div
-                                            className="absolute top-0 bottom-0 border-l-2 border-primary/50 z-0"
-                                            style={{ left: `${CURRENT_TIME_POS}%` }}
-                                        />
+                                        {(!compact || dashboard) && (
+                                            <div
+                                                className="absolute top-0 bottom-0 border-l-2 border-primary/50 z-0"
+                                                style={{ left: `${CURRENT_TIME_POS}%` }}
+                                            />
+                                        )}
 
                                         {/* Bookings */}
                                         {bookings
@@ -884,23 +1037,29 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
                                                         )}
 
                                                         {/* Name and time on the left */}
-                                                        <div className={`flex flex-col justify-center gap-1 flex-1 py-1 min-w-0 transition-all duration-200 ${isQuickEdit && !selectedBooking ? (isResizingThis ? 'pl-8 pr-2' : 'px-2 group-hover:pl-8') : 'px-2'}`}>
+                                                        <div className={`flex flex-col justify-center gap-1 flex-1 py-1 min-w-0 transition-all duration-200 ${isQuickEdit && !selectedBooking && !compact ? (isResizingThis ? 'pl-8 pr-2' : 'px-2 group-hover:pl-8') : 'px-2'}`}>
                                                             <p className="font-semibold text-xs truncate leading-tight">{booking.name}</p>
-                                                            {!compact && (
-                                                                <span className="opacity-90 text-xs flex items-center gap-1">
-                                                                    {hasPendingChanges && <Pencil className="h-3 w-3 text-white" />}
-                                                                    {effective.time}
-                                                                </span>
-                                                            )}
+                                                            <span className="opacity-90 text-xs flex items-center gap-1">
+                                                                {hasPendingChanges && <Pencil className="h-3 w-3 text-white" />}
+                                                                {effective.time}
+                                                            </span>
                                                         </div>
 
                                                         {/* Guests on the right */}
-                                                        {!compact && (
-                                                            <div className={`flex items-center gap-2 transition-all duration-200 ${isQuickEdit && !selectedBooking ? (isResizingThis ? 'pr-8' : 'pr-2 group-hover:pr-8') : 'pr-2'}`}>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <Users className="h-4 w-4" />
-                                                                    <span className="text-sm font-medium">{booking.guests}</span>
-                                                                </div>
+                                                        <div className={`flex items-center gap-2 transition-all duration-200 ${isQuickEdit && !selectedBooking && !compact ? (isResizingThis ? 'pr-16' : 'pr-2 group-hover:pr-16') : 'pr-2'}`}>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Users className="h-4 w-4" />
+                                                                <span className="text-sm font-medium">{booking.guests}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Delete button */}
+                                                        {isQuickEdit && !selectedBooking && (
+                                                            <div
+                                                                className={`absolute right-6 top-0 bottom-0 w-6 flex items-center justify-center cursor-pointer z-20 transition-opacity duration-200 ${isResizingThis ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                                onClick={(e) => handleDeleteBooking(e, booking)}
+                                                            >
+                                                                <Trash2 className={`h-5 w-5 transition-colors duration-200 text-white/80 hover:text-white`} />
                                                             </div>
                                                         )}
 
@@ -922,7 +1081,7 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
                                             const effectiveSelected = getEffectiveBooking(selectedBooking);
                                             return (
                                                 <div
-                                                    className="absolute top-2 bottom-2 rounded-xl px-2 py-1 flex items-center justify-between bg-emerald-600 text-white shadow-lg z-20 pointer-events-none"
+                                                    className={`absolute top-2 bottom-2 rounded-xl px-2 py-1 flex items-center justify-between shadow-lg z-20 pointer-events-none ${previewPosition.isOverlapping ? 'bg-red-500 text-white opacity-80' : 'bg-emerald-600 text-white'}`}
                                                     style={{
                                                         left: `${previewPosition.leftPercent}%`,
                                                         width: `${getWidth(effectiveSelected.duration)}%`,
@@ -943,9 +1102,85 @@ const BookingCalendar = ({ compact = false, className, initialTime, onSlotClick 
                                                 </div>
                                             );
                                         })()}
+
+                                        {/* Hover preview - shows preview booking when hovering over slots (enabled in dashboard mode) */}
+                                        {(!compact || dashboard) && hoveredSlot && hoveredSlot.table === tableNumber && (() => {
+                                            const PREVIEW_DURATION = 90;
+                                            const wouldOverlapBooking = wouldOverlap(
+                                                tableNumber,
+                                                format(selectedDate, "yyyy-MM-dd"),
+                                                hoveredSlot.time,
+                                                PREVIEW_DURATION
+                                            );
+                                            
+                                            // Don't show preview if it would overlap
+                                            if (wouldOverlapBooking) return null;
+
+                                            return (
+                                                <div
+                                                    className="absolute top-2 bottom-2 rounded-xl bg-emerald-50 z-15 pointer-events-none"
+                                                    style={{
+                                                        left: `${hoveredSlot.position}%`,
+                                                        width: `${getWidth(PREVIEW_DURATION)}%`,
+                                                    }}
+                                                />
+                                            );
+                                        })()}
+
+                                        {/* Preview booking card - always visible when preview props are provided */}
+                                        {previewBookingTime && previewBookingTable && previewBookingGuests && previewBookingDuration && normalizeTable(previewBookingTable) === tableNumber && (() => {
+                                            const previewDateStr = format(selectedDate, "yyyy-MM-dd");
+                                            const [previewHours, previewMins] = previewBookingTime.split(":").map(Number);
+                                            const previewDateTime = setMinutes(setHours(new Date(selectedDate), previewHours), previewMins);
+                                            const diff = differenceInMinutes(previewDateTime, viewStart);
+                                            const leftPos = (diff / TOTAL_WINDOW_MINUTES) * 100;
+                                            const width = getWidth(previewBookingDuration);
+                                            
+                                            // Only render if partially visible
+                                            if (leftPos + width < 0 || leftPos > 100) return null;
+
+                                            const wouldOverlapBooking = wouldOverlap(
+                                                normalizeTable(previewBookingTable),
+                                                previewDateStr,
+                                                previewBookingTime,
+                                                previewBookingDuration
+                                            );
+
+                                            // Check if table can accommodate the number of guests
+                                            const previewTableData = tablesData.find(t => String(t.table_number) === normalizeTable(previewBookingTable));
+                                            const canAccommodateGuests = previewTableData 
+                                                ? previewTableData.max_capacity >= previewBookingGuests 
+                                                : true; // Default to true if table not found
+
+                                            const isErrorState = wouldOverlapBooking || !canAccommodateGuests;
+
+                                            const previewName = previewBookingFirstName && previewBookingSurname 
+                                                ? `${previewBookingFirstName} ${previewBookingSurname}`.trim()
+                                                : previewBookingFirstName || previewBookingSurname || "New Booking";
+
+                                            return (
+                                                <div
+                                                    className={`absolute top-2 bottom-2 rounded-xl flex items-center z-15 pointer-events-none ${isErrorState ? 'bg-red-500/80 text-white' : 'bg-emerald-500 text-white'}`}
+                                                    style={{
+                                                        left: `${leftPos}%`,
+                                                        width: `${width}%`,
+                                                    }}
+                                                >
+                                                    <div className="flex flex-col justify-center gap-1 flex-1 py-1 min-w-0 px-2">
+                                                        <p className="font-semibold text-xs truncate leading-tight">{previewName}</p>
+                                                        <span className="opacity-90 text-xs">{previewBookingTime}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 pr-2">
+                                                        <Users className="h-4 w-4" />
+                                                        <span className="text-sm font-medium">{previewBookingGuests}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </ScrollArea>
                 </div>

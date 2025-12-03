@@ -2,6 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Users, Calendar, TrendingUp, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BookingCalendar from "@/components/BookingCalendar";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -64,38 +66,68 @@ const Dashboard = () => {
             })}
           </div>
 
-          {/* Recent Activity */}
-          <Card className="cursor-pointer flex-1" onClick={() => navigate('/activity')}>
+          {/* Bookings by Hour */}
+          <Card className="flex-1">
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest booking updates</CardDescription>
+              <CardTitle>Bookings by Hour</CardTitle>
+              <CardDescription>Peak booking times throughout the day</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  { time: "2 min ago", text: "New booking for 4 guests at 8:00 PM" },
-                  { time: "15 min ago", text: "Booking confirmed for Smith party" },
-                ].map((activity, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div>
-                      <p className="text-sm text-foreground">{activity.text}</p>
-                      <p className="text-xs text-muted-foreground">{activity.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <CardContent className="h-[250px]">
+              <ChartContainer config={{
+                bookings: {
+                  label: "Bookings",
+                  color: "#10b981",
+                },
+              }} className="h-full w-full">
+                <BarChart data={[
+                  { hour: "11am", bookings: 8 },
+                  { hour: "12pm", bookings: 22 },
+                  { hour: "1pm", bookings: 35 },
+                  { hour: "2pm", bookings: 18 },
+                  { hour: "3pm", bookings: 12 },
+                  { hour: "4pm", bookings: 8 },
+                  { hour: "5pm", bookings: 15 },
+                  { hour: "6pm", bookings: 42 },
+                  { hour: "7pm", bookings: 58 },
+                  { hour: "8pm", bookings: 52 },
+                  { hour: "9pm", bookings: 38 },
+                  { hour: "10pm", bookings: 18 },
+                ]} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                  <XAxis
+                    dataKey="hour"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => `${value} bookings`}
+                      />
+                    }
+                  />
+                  <Bar
+                    dataKey="bookings"
+                    fill="var(--color-bookings)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
             </CardContent>
           </Card>
         </div>
 
         {/* Right Column: Schedule */}
         <div className="flex flex-col min-h-0">
-          <Card className="flex-1 cursor-pointer overflow-hidden flex flex-col">
-            <CardContent className="p-0 flex-1 flex flex-col overflow-hidden">
-              <BookingCalendar compact className="h-full" />
-            </CardContent>
-          </Card>
+          <BookingCalendar compact dashboard className="h-full" />
         </div>
       </div>
     </div>

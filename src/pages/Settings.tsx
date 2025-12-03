@@ -132,7 +132,7 @@ const Settings = () => {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} />
+                        <Input type="email" placeholder="you@example.com" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -146,7 +146,7 @@ const Settings = () => {
                     <FormItem>
                       <FormLabel>Full Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Jane Doe" {...field} />
+                        <Input placeholder="Jane Doe" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -154,7 +154,7 @@ const Settings = () => {
                 />
 
                 <div className="flex justify-end">
-                  <Button type="submit" disabled={profileMutation.isPending}>
+                  <Button type="submit" disabled={profileMutation.isPending} className="px-8 bg-emerald-500 hover:bg-emerald-600 text-white">
                     {profileMutation.isPending ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
@@ -178,7 +178,7 @@ const Settings = () => {
                     <FormItem>
                       <FormLabel>Current Password</FormLabel>
                       <FormControl>
-                        <Input type="password" autoComplete="current-password" {...field} />
+                        <Input type="password" autoComplete="current-password" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -192,7 +192,7 @@ const Settings = () => {
                     <FormItem>
                       <FormLabel>New Password</FormLabel>
                       <FormControl>
-                        <Input type="password" autoComplete="new-password" {...field} />
+                        <Input type="password" autoComplete="new-password" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -206,7 +206,7 @@ const Settings = () => {
                     <FormItem>
                       <FormLabel>Confirm New Password</FormLabel>
                       <FormControl>
-                        <Input type="password" autoComplete="new-password" {...field} />
+                        <Input type="password" autoComplete="new-password" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 hover:shadow-md focus-visible:shadow-md transition-shadow" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -214,7 +214,7 @@ const Settings = () => {
                 />
 
                 <div className="flex justify-end">
-                  <Button type="submit" disabled={passwordMutation.isPending}>
+                  <Button type="submit" disabled={passwordMutation.isPending} className="px-8 bg-emerald-500 hover:bg-emerald-600 text-white">
                     {passwordMutation.isPending ? "Updating..." : "Update Password"}
                   </Button>
                 </div>

@@ -18,6 +18,7 @@ interface FilterState {
     guestRange: number[];
     tables: number[];
     timeRange: string[];
+    specialBookings: "all" | "specialRequests" | "dietaryRestrictions";
 }
 
 interface ActivityFilterSidebarProps {
@@ -91,7 +92,8 @@ export const ActivityFilterSidebar = ({ filters, onFilterChange, onClearFilters 
         filters.dateRange?.from !== undefined ||
         filters.guestRange[0] !== 1 || filters.guestRange[1] !== 20 ||
         filters.tables.length !== ALL_TABLES.length ||
-        filters.timeRange[0] !== "00:00" || filters.timeRange[1] !== "23:59";
+        filters.timeRange[0] !== "00:00" || filters.timeRange[1] !== "23:59" ||
+        filters.specialBookings !== "all";
 
     return (
         <Sheet>
@@ -166,6 +168,21 @@ export const ActivityFilterSidebar = ({ filters, onFilterChange, onClearFilters 
                                         size="sm"
                                         className="h-4 w-4 p-0 hover:bg-transparent"
                                         onClick={clearTimeFilter}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                </Badge>
+                            )}
+                            {filters.specialBookings !== "all" && (
+                                <Badge variant="secondary" className="gap-2 pr-1">
+                                    <span className="text-xs">
+                                        {filters.specialBookings === "specialRequests" ? "Special Requests" : "Dietary Restrictions"}
+                                    </span>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-4 w-4 p-0 hover:bg-transparent"
+                                        onClick={() => onFilterChange({ ...filters, specialBookings: "all" })}
                                     >
                                         <X className="h-3 w-3" />
                                     </Button>
@@ -302,6 +319,53 @@ export const ActivityFilterSidebar = ({ filters, onFilterChange, onClearFilters 
                                                     className="w-full bg-muted/50 border-0 hover:shadow-md focus-visible:shadow-md transition-shadow focus-visible:ring-0"
                                                 />
                                             </div>
+                                        </div>
+                                    </div>
+                                </AccordionContent>
+                            </AccordionItem>
+
+                            <AccordionItem value="special" className="rounded-xl bg-white shadow-sm px-4 border-none">
+                                <AccordionTrigger className="hover:no-underline py-4">Special Bookings</AccordionTrigger>
+                                <AccordionContent className="pb-4">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="all-bookings"
+                                                checked={filters.specialBookings === "all"}
+                                                onCheckedChange={() => onFilterChange({ ...filters, specialBookings: "all" })}
+                                            />
+                                            <label
+                                                htmlFor="all-bookings"
+                                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                            >
+                                                Show all bookings
+                                            </label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="special-requests"
+                                                checked={filters.specialBookings === "specialRequests"}
+                                                onCheckedChange={() => onFilterChange({ ...filters, specialBookings: "specialRequests" })}
+                                            />
+                                            <label
+                                                htmlFor="special-requests"
+                                                className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                            >
+                                                Show only special requests bookings
+                                            </label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="dietary-restrictions"
+                                                checked={filters.specialBookings === "dietaryRestrictions"}
+                                                onCheckedChange={() => onFilterChange({ ...filters, specialBookings: "dietaryRestrictions" })}
+                                            />
+                                            <label
+                                                htmlFor="dietary-restrictions"
+                                                className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                            >
+                                                Show only dietary restriction bookings
+                                            </label>
                                         </div>
                                     </div>
                                 </AccordionContent>
